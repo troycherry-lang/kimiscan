@@ -50,6 +50,9 @@ export async function traceImageCv(
     return m;
   };
 
+  // Yield to the event loop so the browser stays responsive
+  const yieldToUi = () => new Promise<void>((r) => setTimeout(r, 0));
+
   try {
     // ── 1. Load image ──
     const src = own(cv.matFromImageData(imageData)); // RGBA
@@ -62,15 +65,18 @@ export async function traceImageCv(
 
     const otsu = own(new cv.Mat());
     cv.threshold(blurred, otsu, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+    await yieldToUi();
 
     // ── 3. Close to fill text & marks INSIDE pieces ──
     const filled = own(new cv.Mat());
     const k25 = own(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(25, 25)));
     cv.morphologyEx(otsu, filled, cv.MORPH_CLOSE, k25);
+    await yieldToUi();
 
     // ── 4. Open to kill speckles ──
     const k9 = own(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9)));
     cv.morphologyEx(filled, filled, cv.MORPH_OPEN, k9);
+    await yieldToUi();
 
     // ── 5. Flood-fill from each corner to erase scanner-background blobs ──
     const W = filled.cols;
@@ -99,7 +105,8 @@ export async function traceImageCv(
 
       // Build a binary mask for just this component
       const mask = own(new cv.Mat());
-      cv.compare(labels, new cv.Mat(labels.rows, labels.cols, cv.CV_32S, new cv.Scalar(i)), mask, cv.CMP_EQ);
+      const scalarMat = own(new cv.Mat(labels.rows, labels.cols, cv.CV_32S, new cv.Scalar(i)));
+      cv.compare(labels, scalarMat, mask, cv.CMP_EQ);
       // cv.compare returns 0/255 in 8U single channel — perfect
       pieces.push({ mask, area, label: i });
     }
@@ -107,6 +114,7 @@ export async function traceImageCv(
 
     // ── 7. For each piece: outer contour + simplified path + hole detection ──
     for (let pIdx = 0; pIdx < pieces.length; pIdx++) {
+      await yieldToUi();
       const piece = pieces[pIdx];
 
       // 7a. Find outer contour

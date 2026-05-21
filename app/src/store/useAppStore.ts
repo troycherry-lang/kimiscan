@@ -168,7 +168,7 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
     set({ tracing: true, traceError: null });
     try {
       const imageData = await loadImageData(currentImage.dataUrl);
-      const maxDim = 3000;
+      const maxDim = 1500;
       let w = imageData.width;
       let h = imageData.height;
       let scaledImageData = imageData;

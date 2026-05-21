@@ -25,7 +25,7 @@ export async function traceImage(
   options: TraceOptions
 ): Promise<TraceResult> {
   const cvOptions: CvTraceOptions = {
-    targetNodes: options.targetNodes,
+    detail: options.targetNodes,   // targetNodes maps to the detail/tolerance slider
     smoothingPasses: options.smoothingPasses,
     dpi: options.dpi,
   };

@@ -8,8 +8,8 @@ import { traceImage } from '@/lib/tracer';
 import { generateId, clamp } from '@/lib/utils';
 
 const DEFAULT_TRACE_SETTINGS: TraceSettings = {
-  targetNodes: 24,
-  smoothingPasses: 3,
+  targetNodes: 45,
+  smoothingPasses: 0,
 };
 
 const DEFAULT_HOLE_PRESETS: HolePreset[] = [
@@ -168,18 +168,11 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
     set({ tracing: true, traceError: null });
     try {
       const imageData = await loadImageData(currentImage.dataUrl);
-      const maxDim = 1500;
-      let w = imageData.width;
-      let h = imageData.height;
-      let scaledImageData = imageData;
-      if (w > maxDim || h > maxDim) {
-        const scale = maxDim / Math.max(w, h);
-        w = Math.round(w * scale);
-        h = Math.round(h * scale);
-        scaledImageData = resizeImageData(imageData, w, h);
-      }
-      const scaleBack = imageData.width / w;
-      const effectiveDpi = currentImage.dpi / scaleBack;
+      // No downsampling — run at full resolution.
+      // The 25×25 morphology kernel must stay sized relative to the actual DPI.
+      const scaledImageData = imageData;
+      const scaleBack = 1;
+      const effectiveDpi = currentImage.dpi;
 
       const result = await traceImage(scaledImageData, {
         targetNodes: state.traceSettings.targetNodes,
@@ -389,19 +382,5 @@ function loadImageData(dataUrl: string): Promise<ImageData> {
   });
 }
 
-function resizeImageData(src: ImageData, w: number, h: number): ImageData {
-  const srcCanvas = document.createElement('canvas');
-  srcCanvas.width = src.width;
-  srcCanvas.height = src.height;
-  srcCanvas.getContext('2d')!.putImageData(src, 0, 0);
-  const dstCanvas = document.createElement('canvas');
-  dstCanvas.width = w;
-  dstCanvas.height = h;
-  const dctx = dstCanvas.getContext('2d')!;
-  dctx.imageSmoothingEnabled = true;
-  dctx.imageSmoothingQuality = 'high';
-  dctx.drawImage(srcCanvas, 0, 0, w, h);
-  return dctx.getImageData(0, 0, w, h);
-}
 
 export default useAppStore;

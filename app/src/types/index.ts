@@ -115,11 +115,8 @@ export interface ScannedImage {
 // ── Trace Settings ──
 
 export interface TraceSettings {
-  threshold: number; // 0-255, -1 = auto (Otsu)
-  blur: number; // 0-10 px
-  cornerThreshold: number; // 60-150 degrees
-  minPathSize: number; // 10-500 px²
-  invert: boolean;
+  targetNodes: number;     // 10-60 — desired node count per outer contour
+  smoothingPasses: number; // 0-6  — Gaussian smoothing on the polygon
 }
 
 // ── App State ──
@@ -170,6 +167,10 @@ export interface AppState {
   // Nesting
   nestingConfig: NestingConfig;
   nestingMode: boolean;
+
+  // Trace runtime status
+  tracing: boolean;
+  traceError: string | null;
 
   // Ollama
   ollamaStatus: 'disconnected' | 'connecting' | 'ready' | 'error';

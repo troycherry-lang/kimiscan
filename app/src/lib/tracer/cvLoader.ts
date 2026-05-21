@@ -1,0 +1,30 @@
+/**
+ * Singleton async loader for OpenCV.js (WASM).
+ * The first call returns a promise that resolves once the runtime is ready.
+ * Subsequent calls return the cached promise.
+ */
+import cv from '@techstark/opencv-js';
+
+type CvModule = typeof cv;
+
+let readyPromise: Promise<CvModule> | null = null;
+
+export function loadCv(): Promise<CvModule> {
+  if (readyPromise) return readyPromise;
+
+  readyPromise = new Promise<CvModule>((resolve) => {
+    // If already initialized (Mat constructor available)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((cv as any).Mat) {
+      resolve(cv);
+      return;
+    }
+    // Otherwise wait for the runtime callback the WASM module fires
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (cv as any).onRuntimeInitialized = () => resolve(cv);
+  });
+
+  return readyPromise;
+}
+
+export type { CvModule };

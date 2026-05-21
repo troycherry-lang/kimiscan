@@ -5,15 +5,11 @@ import type {
   NestingConfig, Point,
 } from '@/types';
 import { traceImage } from '@/lib/tracer';
-import { pxToMm } from '@/lib/geometry/transform';
 import { generateId, clamp } from '@/lib/utils';
 
 const DEFAULT_TRACE_SETTINGS: TraceSettings = {
-  threshold: -1,
-  blur: 1,
-  cornerThreshold: 120,
-  minPathSize: 10,
-  invert: false,
+  targetNodes: 24,
+  smoothingPasses: 3,
 };
 
 const DEFAULT_HOLE_PRESETS: HolePreset[] = [
@@ -47,7 +43,7 @@ interface AppActions {
 
   // Trace
   setTraceSettings: (settings: Partial<TraceSettings>) => void;
-  runTrace: () => void;
+  runTrace: () => Promise<void>;
 
   // Paths
   setSelectedPath: (id: string | null) => void;
@@ -122,6 +118,8 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
   nestingConfig: { ...DEFAULT_NESTING_CONFIG },
   nestingMode: false,
   nestingShapes: [],
+  tracing: false,
+  traceError: null,
   ollamaStatus: 'disconnected',
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'qwen2.5-vl:7b',
@@ -151,7 +149,9 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
       undo: () => set({ image: prevImage, paths: prevPaths, selectedPathId: null }),
       redo: () => set({ image, paths: [], selectedPathId: null }),
     });
-    set({ image, paths: [], selectedPathId: null, detectedHoles: [], glueLines: [] });
+    set({ image, paths: [], selectedPathId: null, detectedHoles: [], glueLines: [], traceError: null });
+    // Auto-run trace as soon as the image is imported
+    setTimeout(() => { void get().runTrace(); }, 0);
   },
 
   // ── Trace ──
@@ -160,46 +160,34 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
       traceSettings: { ...s.traceSettings, ...settings },
     })),
 
-  runTrace: () => {
+  runTrace: async () => {
     const state = get();
     const currentImage = state.image;
-    if (!currentImage) return;
+    if (!currentImage || state.tracing) return;
 
-    // Create offscreen canvas for image data
-    const img = new Image();
-    img.src = currentImage.dataUrl;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      // Downsample large images for trace speed
+    set({ tracing: true, traceError: null });
+    try {
+      const imageData = await loadImageData(currentImage.dataUrl);
       const maxDim = 3000;
-      let w = img.width;
-      let h = img.height;
+      let w = imageData.width;
+      let h = imageData.height;
+      let scaledImageData = imageData;
       if (w > maxDim || h > maxDim) {
         const scale = maxDim / Math.max(w, h);
         w = Math.round(w * scale);
         h = Math.round(h * scale);
+        scaledImageData = resizeImageData(imageData, w, h);
       }
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, w, h);
-      const imageData = ctx.getImageData(0, 0, w, h);
+      const scaleBack = imageData.width / w;
+      const effectiveDpi = currentImage.dpi / scaleBack;
 
-      // Use stored DPI, adjusted for downsampling
-      const scaleFactor = w / img.width;
-      const effectiveDpi = currentImage.dpi * scaleFactor;
-
-      const result = traceImage(imageData, {
-        threshold: state.traceSettings.threshold,
-        blur: state.traceSettings.blur,
-        cornerThreshold: state.traceSettings.cornerThreshold,
-        minPathSize: state.traceSettings.minPathSize,
-        invert: state.traceSettings.invert,
+      const result = await traceImage(scaledImageData, {
+        targetNodes: state.traceSettings.targetNodes,
+        smoothingPasses: state.traceSettings.smoothingPasses,
         dpi: effectiveDpi,
       });
 
       // Scale paths back to original image coordinates
-      const scaleBack = img.width / w;
       const scaledPaths: VectorPath[] = result.paths.map((p) => ({
         ...p,
         nodes: p.nodes.map((n) => ({
@@ -213,39 +201,18 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
             ? { x: n.handleOut.x * scaleBack, y: n.handleOut.y * scaleBack }
             : null,
         })),
-        lengthMm: p.lengthMm, // Already in mm from tracer
+      }));
+      const holes: DetectedHole[] = result.detectedHoles.map((h) => ({
+        ...h,
+        x: h.x * scaleBack,
+        y: h.y * scaleBack,
       }));
 
-      // Auto-detect holes
-      const holes: DetectedHole[] = scaledPaths
-        .filter((p) => p.type === 'hole')
-        .map((p) => {
-          const bounds = getPathBounds(p);
-          const wMm = pxToMm(bounds.maxX - bounds.minX, state.image!.dpi);
-          const hMm = pxToMm(bounds.maxY - bounds.minY, state.image!.dpi);
-          return {
-            id: generateId(),
-            pathId: p.id,
-            x: (bounds.minX + bounds.maxX) / 2,
-            y: (bounds.minY + bounds.maxY) / 2,
-            widthMm: wMm,
-            heightMm: hMm,
-            circularity: p.circularity || 0,
-            aspectRatio: Math.max(wMm, hMm) / Math.max(Math.min(wMm, hMm), 0.01),
-          };
-        });
-
-      // Update threshold if auto
-      if (state.traceSettings.threshold < 0) {
-        set({
-          traceSettings: { ...state.traceSettings, threshold: result.thresholdUsed },
-        });
-      }
-
       const prevPaths = state.paths;
+      const prevHoles = state.detectedHoles;
       state.pushAction({
         type: 'trace',
-        undo: () => set({ paths: prevPaths, detectedHoles: [] }),
+        undo: () => set({ paths: prevPaths, detectedHoles: prevHoles }),
         redo: () => set({ paths: scaledPaths, detectedHoles: holes }),
       });
 
@@ -254,8 +221,14 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
         detectedHoles: holes,
         selectedPathId: null,
         selectedNodeIndex: null,
+        tracing: false,
+        traceError: null,
       });
-    };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ tracing: false, traceError: msg });
+      console.error('Trace failed:', err);
+    }
   },
 
   // ── Paths ──
@@ -399,15 +372,36 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 }));
 
-function getPathBounds(path: VectorPath) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const n of path.nodes) {
-    minX = Math.min(minX, n.x);
-    minY = Math.min(minY, n.y);
-    maxX = Math.max(maxX, n.x);
-    maxY = Math.max(maxY, n.y);
-  }
-  return { minX, minY, maxX, maxY };
+function loadImageData(dataUrl: string): Promise<ImageData> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Could not get 2D context'));
+      ctx.drawImage(img, 0, 0);
+      resolve(ctx.getImageData(0, 0, img.width, img.height));
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = dataUrl;
+  });
+}
+
+function resizeImageData(src: ImageData, w: number, h: number): ImageData {
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = src.width;
+  srcCanvas.height = src.height;
+  srcCanvas.getContext('2d')!.putImageData(src, 0, 0);
+  const dstCanvas = document.createElement('canvas');
+  dstCanvas.width = w;
+  dstCanvas.height = h;
+  const dctx = dstCanvas.getContext('2d')!;
+  dctx.imageSmoothingEnabled = true;
+  dctx.imageSmoothingQuality = 'high';
+  dctx.drawImage(srcCanvas, 0, 0, w, h);
+  return dctx.getImageData(0, 0, w, h);
 }
 
 export default useAppStore;

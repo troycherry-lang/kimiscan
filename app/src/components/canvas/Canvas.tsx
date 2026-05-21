@@ -78,19 +78,20 @@ export default function Canvas() {
     return { x: ix, y: iy };
   }, [getImageRect]);
 
-  // Draw raster image on canvas
+  // Draw raster image on canvas (always run; clear when hidden)
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !image || !showImage) return;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rect = getImageRect();
     canvas.width = canvas.parentElement?.clientWidth || 800;
     canvas.height = canvas.parentElement?.clientHeight || 600;
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    if (!image || !showImage) return;
+
+    const rect = getImageRect();
     const img = new Image();
     img.onload = () => {
       ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);

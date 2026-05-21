@@ -12,6 +12,8 @@ export default function TraceSettingsSection() {
   const settings = useAppStore((s) => s.traceSettings);
   const setSettings = useAppStore((s) => s.setTraceSettings);
   const runTrace = useAppStore((s) => s.runTrace);
+  const tracing = useAppStore((s) => s.tracing);
+  const traceError = useAppStore((s) => s.traceError);
   const ollamaUrl = useAppStore((s) => s.ollamaUrl);
   const ollamaModel = useAppStore((s) => s.ollamaModel);
   const ollamaStatus = useAppStore((s) => s.ollamaStatus);
@@ -70,92 +72,60 @@ export default function TraceSettingsSection() {
 
       {expanded && (
         <div className="px-3 pb-3 space-y-3">
-          {/* Threshold */}
-          <ControlRow
-            label="Threshold"
-            value={settings.threshold < 0 ? 'Auto' : String(settings.threshold)}
-          >
+          {/* Detail / target node count */}
+          <ControlRow label="Detail" value={`${settings.targetNodes} nodes`}>
             <input
               type="range"
-              min={-1}
-              max={255}
-              value={settings.threshold}
-              onChange={(e) => setSettings({ threshold: Number(e.target.value) })}
+              min={10}
+              max={60}
+              step={1}
+              value={settings.targetNodes}
+              onChange={(e) => setSettings({ targetNodes: Number(e.target.value) })}
             />
           </ControlRow>
 
-          {/* Smooth / Blur */}
-          <ControlRow label="Smooth" value={`${settings.blur}px`}>
+          {/* Smoothing passes */}
+          <ControlRow label="Smoothing" value={`${settings.smoothingPasses} passes`}>
             <input
               type="range"
               min={0}
-              max={10}
-              step={0.5}
-              value={settings.blur}
-              onChange={(e) => setSettings({ blur: Number(e.target.value) })}
-            />
-          </ControlRow>
-
-          {/* Corner Threshold */}
-          <ControlRow label="Corners" value={`${settings.cornerThreshold}°`}>
-            <input
-              type="range"
-              min={60}
-              max={150}
-              value={settings.cornerThreshold}
-              onChange={(e) => setSettings({ cornerThreshold: Number(e.target.value) })}
-            />
-          </ControlRow>
-
-          {/* Min Path Size */}
-          <ControlRow label="Min Size" value={`${settings.minPathSize}mm²`}>
-            <input
-              type="range"
-              min={1}
-              max={200}
+              max={6}
               step={1}
-              value={settings.minPathSize}
-              onChange={(e) => setSettings({ minPathSize: Number(e.target.value) })}
+              value={settings.smoothingPasses}
+              onChange={(e) => setSettings({ smoothingPasses: Number(e.target.value) })}
             />
           </ControlRow>
-
-          {/* Invert */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Invert</span>
-            <button
-              className="w-8 h-4 rounded-full transition-colors relative"
-              style={{
-                background: settings.invert ? 'var(--accent-coral)' : 'var(--border-default)',
-              }}
-              onClick={() => setSettings({ invert: !settings.invert })}
-            >
-              <div
-                className="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all"
-                style={{ left: settings.invert ? 18 : 2 }}
-              />
-            </button>
-          </div>
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-1">
             <button
-              className="flex-1 py-1.5 rounded text-xs font-medium transition-colors"
-              style={{ background: 'var(--accent-coral)', color: '#fff' }}
-              onClick={runTrace}
+              className="flex-1 py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+              style={{
+                background: tracing ? 'var(--bg-input)' : 'var(--accent-coral)',
+                color: '#fff',
+                opacity: tracing ? 0.7 : 1,
+              }}
+              onClick={() => { void runTrace(); }}
+              disabled={tracing}
             >
-              Trace Image
+              {tracing && <Loader2 size={12} className="animate-spin" />}
+              {tracing ? 'Tracing…' : 'Trace Image'}
             </button>
             <button
               className="w-8 h-8 flex items-center justify-center rounded transition-colors"
               style={{ background: 'var(--bg-input)' }}
-              onClick={() => setSettings({
-                threshold: -1, blur: 1, cornerThreshold: 120, minPathSize: 10, invert: false,
-              })}
+              onClick={() => setSettings({ targetNodes: 24, smoothingPasses: 3 })}
               title="Reset to defaults"
             >
               <RotateCcw size={12} style={{ color: 'var(--text-muted)' }} />
             </button>
           </div>
+
+          {traceError && (
+            <p className="text-[10px] text-center" style={{ color: '#ef4444' }}>
+              {traceError}
+            </p>
+          )}
 
           {/* AI Read Labels */}
           <button

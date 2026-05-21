@@ -72,7 +72,7 @@ async function ollamaGenerate(
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 180000);
 
     const resp = await fetch(`${config.baseUrl}/api/generate`, {
       method: 'POST',
@@ -83,11 +83,16 @@ async function ollamaGenerate(
 
     clearTimeout(timeout);
 
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      console.error('Ollama HTTP error:', resp.status, errBody);
+      return null;
+    }
 
     const data = await resp.json();
     return data.response || null;
-  } catch {
+  } catch (err) {
+    console.error('Ollama generate failed:', err);
     return null;
   }
 }

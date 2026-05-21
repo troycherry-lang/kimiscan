@@ -8,8 +8,8 @@ import { traceImage } from '@/lib/tracer';
 import { generateId, clamp } from '@/lib/utils';
 
 const DEFAULT_TRACE_SETTINGS: TraceSettings = {
-  targetNodes: 45,
-  smoothingPasses: 0,
+  detail: 45,
+  smoothing: 0,
 };
 
 const DEFAULT_HOLE_PRESETS: HolePreset[] = [
@@ -175,8 +175,8 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
       const effectiveDpi = currentImage.dpi;
 
       const result = await traceImage(scaledImageData, {
-        targetNodes: state.traceSettings.targetNodes,
-        smoothingPasses: state.traceSettings.smoothingPasses,
+        detail: state.traceSettings.detail,
+        smoothing: state.traceSettings.smoothing,
         dpi: effectiveDpi,
       });
 

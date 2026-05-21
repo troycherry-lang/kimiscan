@@ -163,6 +163,27 @@ function fitCubic(pts, t1, t2, tol, depth) {
   var c1=ref.c1, c2=ref.c2;
   var errRef=maxErr(pts,pts[0],c1,c2,pts[n-1],u);
   if (errRef.err<=tol||depth>=10) return [{p0:pts[0],c1:c1,c2:c2,p3:pts[n-1]}];
+
+  // Split guard: don't chase tiny scanner-noise spikes
+  if (depth >= 3 && n > 20) {
+    var spikeWin = Math.max(2, Math.floor(n * 0.03));
+    var ls = Math.max(0, errRef.idx - spikeWin);
+    var le = Math.min(n - 1, errRef.idx + spikeWin);
+    var localLen = 0;
+    for (var li = ls + 1; li <= le; li++) {
+      var ldx = pts[li].x - pts[li-1].x, ldy = pts[li].y - pts[li-1].y;
+      localLen += Math.sqrt(ldx*ldx + ldy*ldy);
+    }
+    var totalLen = 0;
+    for (var li = 1; li < n; li++) {
+      var ldx = pts[li].x - pts[li-1].x, ldy = pts[li].y - pts[li-1].y;
+      totalLen += Math.sqrt(ldx*ldx + ldy*ldy);
+    }
+    if (totalLen > 0 && localLen / totalLen < 0.03) {
+      return [{p0:pts[0],c1:c1,c2:c2,p3:pts[n-1]}];
+    }
+  }
+
   var si=Math.max(1,Math.min(n-2,errRef.idx));
   var mt=vecNorm({x:pts[Math.min(si+1,n-1)].x-pts[Math.max(si-1,0)].x, y:pts[Math.min(si+1,n-1)].y-pts[Math.max(si-1,0)].y});
   return fitCubic(pts.slice(0,si+1),t1,vecNeg(mt),tol,depth+1).concat(fitCubic(pts.slice(si),mt,t2,tol,depth+1));
@@ -231,7 +252,7 @@ function circularityFromNodes(nodes) {
 // ── Main trace ────────────────────────────────────────────────────────────────
 
 function doTrace(pixels, width, height, options) {
-  var detail = options.detail, smoothingPasses = options.smoothingPasses, dpi = options.dpi;
+  var detail = options.detail, smoothing = options.smoothing, dpi = options.dpi;
   self.postMessage({ type:'log', msg:'[worker] doTrace: '+width+'x'+height+', detail='+detail+', dpi='+dpi });
 
   var paths = [], detectedHoles = [], trash = [];
@@ -270,8 +291,8 @@ function doTrace(pixels, width, height, options) {
 
     var W=morphed.cols, H=morphed.rows;
     minArea = W*H*0.005;
-    var tolMm=Math.max(0.05, 1.1-(detail/60)*1.0);
-    var tolPx=tolMm*(dpi/25.4);
+    // tolPx directly in pixels: detail 60=0.7px (tight), 10=4px (loose)
+    var tolPx = Math.max(0.5, (70 - detail) / 15);
     // Minimum hole area: ~1mm diameter circle at this DPI
     var pxPerMm = dpi / 25.4;
     var minHoleArea = Math.PI * (pxPerMm * 0.5) * (pxPerMm * 0.5); // 1mm dia
@@ -295,7 +316,7 @@ function doTrace(pixels, width, height, options) {
         if (rawPts.length<4) continue;
 
         var preSmoothed=gaussianSmooth(rawPts,5,1);
-        var extraPasses=Math.max(0,Math.min(5,Math.round(smoothingPasses)));
+        var extraPasses=Math.max(0,Math.min(3,Math.round(smoothing)));
         var smoothed=extraPasses>0?gaussianSmooth(preSmoothed,21,extraPasses):preSmoothed;
 
         var nodes=fitBezierContour(smoothed,tolPx,1.0);

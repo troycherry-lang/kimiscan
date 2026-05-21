@@ -115,8 +115,8 @@ export interface ScannedImage {
 // ── Trace Settings ──
 
 export interface TraceSettings {
-  targetNodes: number;     // 10-60 — desired node count per outer contour
-  smoothingPasses: number; // 0-6  — Gaussian smoothing on the polygon
+  detail: number;   // 10-60 — bezier tolerance (60=tightest, 10=loosest)
+  smoothing: number; // 0-3 — extra Gaussian smoothing passes
 }
 
 // ── App State ──

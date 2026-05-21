@@ -10,8 +10,8 @@ import type { VectorPath, DetectedHole } from '@/types';
 import { traceImageCv, type CvTraceOptions } from './cvTracer';
 
 export interface TraceOptions {
-  targetNodes: number;
-  smoothingPasses: number;
+  detail: number;
+  smoothing: number;
   dpi: number;
 }
 
@@ -25,8 +25,8 @@ export async function traceImage(
   options: TraceOptions
 ): Promise<TraceResult> {
   const cvOptions: CvTraceOptions = {
-    detail: options.targetNodes,   // targetNodes maps to the detail/tolerance slider
-    smoothingPasses: options.smoothingPasses,
+    detail: options.detail,
+    smoothingPasses: options.smoothing,
     dpi: options.dpi,
   };
   return traceImageCv(imageData, cvOptions);

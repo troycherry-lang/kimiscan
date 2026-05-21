@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import useAppStore from '@/store/useAppStore';
 import { ChevronDown, ChevronRight, ArrowLeftRight } from 'lucide-react';
-import { offsetPolygon, extractPathSegment } from '@/lib/geometry/offsetPath';
-import { pxToMm, mmToPx } from '@/lib/geometry/transform';
+import { extractPathSegment, insetArc, polygonCentroid } from '@/lib/geometry/offsetPath';
+import { mmToPx } from '@/lib/geometry/transform';
 import { generateId } from '@/lib/utils';
-import type { VectorPath } from '@/types';
+import type { Point, PathNode, VectorPath } from '@/types';
 
 export default function GlueLineSection() {
   const [expanded, setExpanded] = useState(true);
@@ -14,7 +14,7 @@ export default function GlueLineSection() {
   const image = useAppStore((s) => s.image);
   const glueLineState = useAppStore((s) => s.glueLineState);
   const setGlueLineState = useAppStore((s) => s.setGlueLineState);
-  const addGlueLine = useAppStore((s) => s.addGlueLine);
+  const updatePath = useAppStore((s) => s.updatePath);
 
   const selectedPath = paths.find((p) => p.id === selectedPathId);
   const isGlueMode = activeTool === 'glue';
@@ -101,55 +101,43 @@ export default function GlueLineSection() {
               onClick={() => {
                 if (!canApply || !sourcePath || !image) return;
 
-                const nodes = sourcePath.nodes.map((n) => ({ x: n.x, y: n.y }));
-                const segment = extractPathSegment(
-                  nodes,
+                const allPts: Point[] = sourcePath.nodes.map((n) => ({ x: n.x, y: n.y }));
+                const arc = extractPathSegment(
+                  allPts,
                   state.entryNodeIndex!,
                   state.exitNodeIndex!,
                   state.useLongSegment
                 );
 
                 const offsetPx = mmToPx(state.insetMm, image.dpi);
-                const offsetPoints = offsetPolygon(segment, offsetPx);
+                const centroid = polygonCentroid(allPts);
+                const insetPts = insetArc(arc, offsetPx, centroid);
 
-                if (!offsetPoints) {
-                  alert('Offset would self-intersect. Try a smaller inset or bevel corners.');
-                  return;
+                // Build the new closed contour: walk the original ring,
+                // skipping the arc segment and substituting the inset arc.
+                // Direction of `arc` matches extractPathSegment's traversal:
+                // it starts at entry and ends at exit. We need to keep the
+                // OPPOSITE arc untouched and replace this one.
+                const oppositeArc = extractPathSegment(
+                  allPts,
+                  state.exitNodeIndex!,
+                  state.entryNodeIndex!,
+                  !state.useLongSegment
+                );
+                // oppositeArc goes exit -> entry. New ring: insetPts (entry->exit), then
+                // oppositeArc minus its first/last (entry/exit duplicates) for closure.
+                const ring: Point[] = [...insetPts];
+                for (let i = 1; i < oppositeArc.length - 1; i++) {
+                  ring.push(oppositeArc[i]);
                 }
 
-                const gluePath: VectorPath = {
-                  id: generateId(),
-                  name: `Glue Line ${useAppStore.getState().glueLines.length + 1}`,
-                  nodes: offsetPoints.map((p) => ({
-                    id: generateId(),
-                    x: p.x,
-                    y: p.y,
-                    type: 'corner' as const,
-                  })),
-                  closed: false,
-                  layer: 'mark',
-                  type: 'glue',
-                  lengthMm: pxToMm(
-                    offsetPoints.reduce((len, p, i) => {
-                      if (i === 0) return 0;
-                      const dx = p.x - offsetPoints[i - 1].x;
-                      const dy = p.y - offsetPoints[i - 1].y;
-                      return len + Math.sqrt(dx * dx + dy * dy);
-                    }, 0),
-                    image.dpi
-                  ),
+                const newNodes: PathNode[] = pointsToNodes(ring);
+
+                const updated: VectorPath = {
+                  ...sourcePath,
+                  nodes: newNodes,
                 };
-
-                addGlueLine({
-                  id: generateId(),
-                  sourcePathId: sourcePath.id,
-                  entryNodeIndex: state.entryNodeIndex!,
-                  exitNodeIndex: state.exitNodeIndex!,
-                  useLongSegment: state.useLongSegment,
-                  insetMm: state.insetMm,
-                  path: gluePath,
-                });
-
+                updatePath(updated);
                 setGlueLineState(null);
               }}
             >
@@ -218,4 +206,26 @@ export default function GlueLineSection() {
       )}
     </div>
   );
+}
+
+function pointsToNodes(pts: Point[]): PathNode[] {
+  const n = pts.length;
+  const t = 1 / 3;
+  const out: PathNode[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n];
+    const cur = pts[i];
+    const next = pts[(i + 1) % n];
+    const handleOut: Point = { x: (next.x - prev.x) * t * 0.5, y: (next.y - prev.y) * t * 0.5 };
+    const handleIn: Point = { x: -handleOut.x, y: -handleOut.y };
+    out.push({
+      id: generateId(),
+      x: cur.x,
+      y: cur.y,
+      type: 'smooth',
+      handleIn,
+      handleOut,
+    });
+  }
+  return out;
 }

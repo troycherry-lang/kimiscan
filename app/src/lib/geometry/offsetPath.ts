@@ -110,6 +110,56 @@ function segmentsIntersect(
 }
 
 /**
+ * Offset an open arc (polyline) perpendicularly toward `inwardRef`.
+ * Endpoints (first and last) stay fixed as anchors; interior points are moved
+ * by `inset` pixels along the inward normal of the local tangent.
+ */
+export function insetArc(arc: Point[], inset: number, inwardRef: Point): Point[] {
+  if (arc.length < 2 || inset === 0) return arc.slice();
+  const out: Point[] = new Array(arc.length);
+  out[0] = { ...arc[0] };
+  out[arc.length - 1] = { ...arc[arc.length - 1] };
+  for (let i = 1; i < arc.length - 1; i++) {
+    const prev = arc[i - 1];
+    const cur = arc[i];
+    const next = arc[i + 1];
+    const tx = next.x - prev.x;
+    const ty = next.y - prev.y;
+    const len = Math.hypot(tx, ty);
+    if (len === 0) { out[i] = { ...cur }; continue; }
+    // Two candidate normals
+    const nx = -ty / len;
+    const ny = tx / len;
+    // Pick the one that points toward inwardRef
+    const dot = (inwardRef.x - cur.x) * nx + (inwardRef.y - cur.y) * ny;
+    const sign = dot >= 0 ? 1 : -1;
+    out[i] = { x: cur.x + sign * nx * inset, y: cur.y + sign * ny * inset };
+  }
+  return out;
+}
+
+export function polygonCentroid(points: Point[]): Point {
+  let cx = 0, cy = 0, a = 0;
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % n];
+    const cross = p.x * q.y - q.x * p.y;
+    cx += (p.x + q.x) * cross;
+    cy += (p.y + q.y) * cross;
+    a += cross;
+  }
+  a *= 0.5;
+  if (Math.abs(a) < 1e-9) {
+    // fallback: average
+    let sx = 0, sy = 0;
+    for (const p of points) { sx += p.x; sy += p.y; }
+    return { x: sx / n, y: sy / n };
+  }
+  return { x: cx / (6 * a), y: cy / (6 * a) };
+}
+
+/**
  * Extract a sub-path from a closed polygon between two point indices.
  * Goes the shorter way by default, or the longer way if `longWay` is true.
  */

@@ -108,12 +108,12 @@ export default function TraceSettingsSection() {
           </ControlRow>
 
           {/* Min Path Size */}
-          <ControlRow label="Min Size" value={`${settings.minPathSize}px²`}>
+          <ControlRow label="Min Size" value={`${settings.minPathSize}mm²`}>
             <input
               type="range"
-              min={10}
-              max={500}
-              step={10}
+              min={1}
+              max={200}
+              step={1}
               value={settings.minPathSize}
               onChange={(e) => setSettings({ minPathSize: Number(e.target.value) })}
             />
@@ -149,7 +149,7 @@ export default function TraceSettingsSection() {
               className="w-8 h-8 flex items-center justify-center rounded transition-colors"
               style={{ background: 'var(--bg-input)' }}
               onClick={() => setSettings({
-                threshold: -1, blur: 1, cornerThreshold: 120, minPathSize: 100, invert: false,
+                threshold: -1, blur: 1, cornerThreshold: 120, minPathSize: 10, invert: false,
               })}
               title="Reset to defaults"
             >

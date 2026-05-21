@@ -12,7 +12,7 @@ const DEFAULT_TRACE_SETTINGS: TraceSettings = {
   threshold: -1,
   blur: 1,
   cornerThreshold: 120,
-  minPathSize: 100,
+  minPathSize: 10,
   invert: false,
 };
 

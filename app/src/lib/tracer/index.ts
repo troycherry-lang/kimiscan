@@ -38,9 +38,9 @@ export function traceImage(imageData: ImageData, options: TraceOptions): TraceRe
   const paths: VectorPath[] = [];
 
   for (const contour of contours) {
-    // Skip tiny paths
+    // Skip tiny paths — minPathSize is in mm²
     const areaMm2 = pxToMm(Math.sqrt(contour.area), options.dpi) ** 2;
-    if (areaMm2 < options.minPathSize / 100) continue; // rough conversion
+    if (areaMm2 < options.minPathSize) continue;
     if (contour.points.length < 10) continue;
 
     // Step 3a: Simplify polygon
@@ -53,6 +53,7 @@ export function traceImage(imageData: ImageData, options: TraceOptions): TraceRe
 
     // Step 3c: Build bezier segments between corners
     const nodes: PathNode[] = [];
+    const handleInQueue: Array<{ x: number; y: number; handleIn: Point }> = [];
     const n = simplified.length;
 
     if (cornerIndices.length === 0) {
@@ -98,46 +99,34 @@ export function traceImage(imageData: ImageData, options: TraceOptions): TraceRe
           x: cp1.x - startPt.x,
           y: cp1.y - startPt.y,
         };
-        const handleIn = {
-          x: cp2.x - endPt.x,
-          y: cp2.y - endPt.y,
-        };
 
-        // Add or update node
-        if (nodes.length === 0 || nodes[nodes.length - 1].id !== `node-${cIdx}`) {
-          // Check if we already have a node at this position
-          const existing = nodes.find(n => distSq(n, startPt) < 0.1);
-          if (!existing) {
-            nodes.push({
-              id: generateId(),
-              x: startPt.x,
-              y: startPt.y,
-              type: 'smooth',
-              handleOut,
-            });
-          }
-        } else {
-          // Update handleOut of existing node
-          const lastNode = nodes[nodes.length - 1];
-          lastNode.handleOut = handleOut;
-        }
-
-        // Set handleIn on the end node (find or defer to closing step)
-        const existingEnd = nodes.find(n => distSq(n, endPt) < 0.1);
-        if (existingEnd) {
-          existingEnd.handleIn = handleIn;
-        } else {
-          // Will be created when that corner is processed; store for later
+        // First pass: create node with handleOut only
+        const existing = nodes.find(nd => distSq(nd, startPt) < 0.1);
+        if (!existing) {
           nodes.push({
             id: generateId(),
-            x: endPt.x,
-            y: endPt.y,
+            x: startPt.x,
+            y: startPt.y,
             type: 'smooth',
-            handleIn,
-            handleOut: null,
+            handleOut,
           });
+        } else {
+          existing.handleOut = handleOut;
         }
+
+        // Store handleIn data for second pass (keyed by end point)
+        handleInQueue.push({
+          x: endPt.x,
+          y: endPt.y,
+          handleIn: { x: cp2.x - endPt.x, y: cp2.y - endPt.y },
+        });
       }
+    }
+
+    // Second pass: apply handleIn to each node by matching position
+    for (const { x, y, handleIn } of handleInQueue) {
+      const node = nodes.find(nd => distSq(nd, { x, y }) < 0.1);
+      if (node) node.handleIn = handleIn;
     }
 
     // Emit all contours (outer and holes)

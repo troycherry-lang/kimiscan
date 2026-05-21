@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg-app: #141419;
+  --bg-panel: #1c1c24;
+  --bg-toolbar: #18181f;
+  --bg-canvas: #0f0f14;
+  --bg-input: #252530;
+  --bg-hover: #2a2a38;
+  --bg-selected: #2d2d3d;
+  --border-default: #2e2e3d;
+  --border-active: #3d3d52;
+  --text-primary: #e8e8ef;
+  --text-secondary: #8a8a9e;
+  --text-muted: #5c5c70;
+  --accent-coral: #e8624a;
+  --accent-coral-hover: #f07860;
+  --accent-cyan: #3bbdc7;
+  --accent-cyan-hover: #52cdd5;
+  --color-cut: #1a1a1a;
+  --color-mark: #2563eb;
+  --color-guide: #6b7280;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-app);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3d3d52;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4d4d62;
+}
+
+/* Range Slider Custom */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--border-default);
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent-coral);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-panel);
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--accent-coral-hover);
+  transform: scale(1.1);
+}
+
+/* Canvas */
+canvas {
+  display: block;
+}
+
+/* Monospace utility */
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}

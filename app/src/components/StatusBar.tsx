@@ -47,6 +47,8 @@ export default function StatusBar() {
               ? '#22c55e'
               : ollamaStatus === 'error'
               ? '#ef4444'
+              : ollamaStatus === 'connecting'
+              ? '#f59e0b'
               : '#6b7280',
           }}
         />
@@ -55,6 +57,8 @@ export default function StatusBar() {
             ? 'AI Ready'
             : ollamaStatus === 'error'
             ? 'AI Error'
+            : ollamaStatus === 'connecting'
+            ? 'AI Connecting…'
             : 'AI Offline'}
         </span>
       </div>

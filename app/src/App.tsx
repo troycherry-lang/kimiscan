@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import MenuBar from '@/components/MenuBar';
 import Toolbar from '@/components/Toolbar';
 import LeftPanel from '@/components/LeftPanel';
@@ -6,10 +7,21 @@ import Canvas from '@/components/canvas/Canvas';
 import StatusBar from '@/components/StatusBar';
 import useAppStore from '@/store/useAppStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { checkOllamaHealth } from '@/lib/ollama';
 
 function App() {
   const image = useAppStore((s) => s.image);
+  const ollamaUrl = useAppStore((s) => s.ollamaUrl);
+  const ollamaModel = useAppStore((s) => s.ollamaModel);
+  const setOllamaStatus = useAppStore((s) => s.setOllamaStatus);
   useKeyboardShortcuts();
+
+  useEffect(() => {
+    setOllamaStatus('connecting');
+    checkOllamaHealth({ baseUrl: ollamaUrl, model: ollamaModel }).then((ok) => {
+      setOllamaStatus(ok ? 'ready' : 'error');
+    });
+  }, [ollamaUrl, ollamaModel, setOllamaStatus]);
 
   return (
     <div

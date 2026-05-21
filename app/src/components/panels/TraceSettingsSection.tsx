@@ -1,13 +1,51 @@
 import { useState } from 'react';
 import useAppStore from '@/store/useAppStore';
-import { ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronRight, RotateCcw, ScanText, Loader2 } from 'lucide-react';
+import { readTextLabels } from '@/lib/ollama';
+import { generateId } from '@/lib/utils';
 
 export default function TraceSettingsSection() {
   const [expanded, setExpanded] = useState(true);
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrMessage, setOcrMessage] = useState<string | null>(null);
   const image = useAppStore((s) => s.image);
   const settings = useAppStore((s) => s.traceSettings);
   const setSettings = useAppStore((s) => s.setTraceSettings);
   const runTrace = useAppStore((s) => s.runTrace);
+  const ollamaUrl = useAppStore((s) => s.ollamaUrl);
+  const ollamaModel = useAppStore((s) => s.ollamaModel);
+  const ollamaStatus = useAppStore((s) => s.ollamaStatus);
+  const addTextLabel = useAppStore((s) => s.addTextLabel);
+
+  const runOcr = async () => {
+    if (!image) return;
+    setOcrRunning(true);
+    setOcrMessage(null);
+    try {
+      const base64 = image.dataUrl.replace(/^data:image\/[^;]+;base64,/, '');
+      const labels = await readTextLabels({ baseUrl: ollamaUrl, model: ollamaModel }, base64);
+      if (labels && labels.length > 0) {
+        labels.forEach((l) => {
+          addTextLabel({
+            id: generateId(),
+            text: l.text,
+            x: l.x * image.width,
+            y: l.y * image.height,
+            fontSizeMm: 3,
+            rotation: 0,
+            layer: 'mark',
+          });
+        });
+        setOcrMessage(`Found ${labels.length} label${labels.length !== 1 ? 's' : ''}`);
+      } else {
+        setOcrMessage('No labels found');
+      }
+    } catch {
+      setOcrMessage('OCR failed');
+    } finally {
+      setOcrRunning(false);
+    }
+  };
 
   if (!image) {
     return (
@@ -118,6 +156,30 @@ export default function TraceSettingsSection() {
               <RotateCcw size={12} style={{ color: 'var(--text-muted)' }} />
             </button>
           </div>
+
+          {/* AI Read Labels */}
+          <button
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded text-xs font-medium transition-colors"
+            style={{
+              background: ollamaStatus === 'ready' ? 'rgba(59,189,199,0.15)' : 'var(--bg-input)',
+              color: ollamaStatus === 'ready' ? '#3bbdc7' : 'var(--text-muted)',
+              border: '1px solid',
+              borderColor: ollamaStatus === 'ready' ? '#3bbdc7' : 'var(--border-default)',
+            }}
+            disabled={ocrRunning || ollamaStatus !== 'ready'}
+            onClick={runOcr}
+            title={ollamaStatus !== 'ready' ? 'Ollama offline' : 'AI reads handwritten text from scan'}
+          >
+            {ocrRunning
+              ? <Loader2 size={12} className="animate-spin" />
+              : <ScanText size={12} />}
+            {ocrRunning ? 'Reading labels…' : 'AI Read Labels'}
+          </button>
+          {ocrMessage && (
+            <p className="text-[10px] text-center" style={{ color: 'var(--text-muted)' }}>
+              {ocrMessage}
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -34,6 +34,7 @@ export default function Canvas() {
   const selectedNodeIndex = useAppStore((s) => s.selectedNodeIndex);
   const activeTool = useAppStore((s) => s.activeTool);
   const glueLineState = useAppStore((s) => s.glueLineState);
+  const textLabels = useAppStore((s) => s.textLabels);
   const setZoom = useAppStore((s) => s.setZoom);
   const setPanOffset = useAppStore((s) => s.setPanOffset);
   const setSelectedPath = useAppStore((s) => s.setSelectedPath);
@@ -426,6 +427,27 @@ export default function Canvas() {
             )}
           </>
         )}
+
+        {/* Text labels */}
+        {textLabels.map((label) => {
+          const pos = nodeToScreen({ x: label.x, y: label.y });
+          const fontSizePx = label.fontSizeMm * imgRect.scale * (image?.dpi ?? 300) / 25.4;
+          return (
+            <g key={label.id} transform={label.rotation !== 0 ? `rotate(${label.rotation}, ${pos.x}, ${pos.y})` : undefined}>
+              <text
+                x={pos.x}
+                y={pos.y}
+                fontSize={Math.max(8, fontSizePx)}
+                fill="#2563eb"
+                fontFamily="Inter, sans-serif"
+                dominantBaseline="middle"
+                style={{ userSelect: 'none', pointerEvents: 'none' }}
+              >
+                {label.text}
+              </text>
+            </g>
+          );
+        })}
       </svg>
 
       {/* Rulers */}

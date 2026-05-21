@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import useAppStore from '@/store/useAppStore';
-import { ChevronDown, ChevronRight, ArrowLeftRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowLeftRight, Crosshair, Loader2 } from 'lucide-react';
+import { findGlueMarkers } from '@/lib/ollama';
 import { offsetPolygon, extractPathSegment } from '@/lib/geometry/offsetPath';
 import { pxToMm, mmToPx } from '@/lib/geometry/transform';
 import { generateId } from '@/lib/utils';
@@ -8,10 +9,14 @@ import type { VectorPath } from '@/types';
 
 export default function GlueLineSection() {
   const [expanded, setExpanded] = useState(true);
+  const [detectingMarkers, setDetectingMarkers] = useState(false);
   const activeTool = useAppStore((s) => s.activeTool);
   const selectedPathId = useAppStore((s) => s.selectedPathId);
   const paths = useAppStore((s) => s.paths);
   const image = useAppStore((s) => s.image);
+  const ollamaUrl = useAppStore((s) => s.ollamaUrl);
+  const ollamaModel = useAppStore((s) => s.ollamaModel);
+  const ollamaStatus = useAppStore((s) => s.ollamaStatus);
   const glueLineState = useAppStore((s) => s.glueLineState);
   const setGlueLineState = useAppStore((s) => s.setGlueLineState);
   const addGlueLine = useAppStore((s) => s.addGlueLine);
@@ -187,8 +192,8 @@ export default function GlueLineSection() {
               Select a contour path first
             </p>
           ) : !isGlueMode ? (
-            <div>
-              <p className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
+            <div className="space-y-2">
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 Selected: {selectedPath.name}
               </p>
               <button
@@ -207,6 +212,57 @@ export default function GlueLineSection() {
                 }}
               >
                 Start Glue Line (G)
+              </button>
+              {/* AI auto-detect markers */}
+              <button
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded text-xs font-medium transition-colors"
+                style={{
+                  background: ollamaStatus === 'ready' ? 'rgba(59,189,199,0.15)' : 'var(--bg-input)',
+                  color: ollamaStatus === 'ready' ? '#3bbdc7' : 'var(--text-muted)',
+                  border: '1px solid',
+                  borderColor: ollamaStatus === 'ready' ? '#3bbdc7' : 'var(--border-default)',
+                }}
+                disabled={detectingMarkers || ollamaStatus !== 'ready' || !image}
+                title={ollamaStatus !== 'ready' ? 'Ollama offline' : 'AI finds entry/exit markers on scan'}
+                onClick={async () => {
+                  if (!image || !selectedPath) return;
+                  setDetectingMarkers(true);
+                  try {
+                    const base64 = image.dataUrl.replace(/^data:image\/[^;]+;base64,/, '');
+                    const markers = await findGlueMarkers({ baseUrl: ollamaUrl, model: ollamaModel }, base64);
+                    if (markers && markers.length >= 2) {
+                      const findNearest = (nx: number, ny: number) => {
+                        const px = nx * image.width;
+                        const py = ny * image.height;
+                        let bestIdx = 0;
+                        let bestDist = Infinity;
+                        selectedPath.nodes.forEach((n, i) => {
+                          const d = Math.sqrt((n.x - px) ** 2 + (n.y - py) ** 2);
+                          if (d < bestDist) { bestDist = d; bestIdx = i; }
+                        });
+                        return bestIdx;
+                      };
+                      const entry = findNearest(markers[0].x, markers[0].y);
+                      const exit = findNearest(markers[1].x, markers[1].y);
+                      useAppStore.getState().setTool('glue');
+                      setGlueLineState({
+                        sourcePathId: selectedPath.id,
+                        entryNodeIndex: entry,
+                        exitNodeIndex: exit,
+                        useLongSegment: false,
+                        insetMm: 5,
+                        previewPath: null,
+                      });
+                    }
+                  } finally {
+                    setDetectingMarkers(false);
+                  }
+                }}
+              >
+                {detectingMarkers
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <Crosshair size={12} />}
+                {detectingMarkers ? 'Detecting…' : 'Auto-detect Markers'}
               </button>
             </div>
           ) : (

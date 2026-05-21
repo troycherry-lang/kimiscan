@@ -93,10 +93,14 @@ export function traceImage(imageData: ImageData, options: TraceOptions): TraceRe
       const bezier = fitBezier(segmentPoints, startTangent, endTangent);
 
       if (bezier) {
-        const [, cp1] = bezier;
+        const [, cp1, cp2] = bezier;
         const handleOut = {
           x: cp1.x - startPt.x,
           y: cp1.y - startPt.y,
+        };
+        const handleIn = {
+          x: cp2.x - endPt.x,
+          y: cp2.y - endPt.y,
         };
 
         // Add or update node
@@ -117,11 +121,27 @@ export function traceImage(imageData: ImageData, options: TraceOptions): TraceRe
           const lastNode = nodes[nodes.length - 1];
           lastNode.handleOut = handleOut;
         }
+
+        // Set handleIn on the end node (find or defer to closing step)
+        const existingEnd = nodes.find(n => distSq(n, endPt) < 0.1);
+        if (existingEnd) {
+          existingEnd.handleIn = handleIn;
+        } else {
+          // Will be created when that corner is processed; store for later
+          nodes.push({
+            id: generateId(),
+            x: endPt.x,
+            y: endPt.y,
+            type: 'smooth',
+            handleIn,
+            handleOut: null,
+          });
+        }
       }
     }
 
-    // Handle closed loop: link last node's handleIn to first
-    if (nodes.length >= 3 && contour.isOuter) {
+    // Emit all contours (outer and holes)
+    if (nodes.length >= 3) {
       // Compute path metadata
       let pathLen = 0;
       for (let i = 0; i < nodes.length; i++) {

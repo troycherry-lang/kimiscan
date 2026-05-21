@@ -1,11 +1,16 @@
 /**
  * Singleton async loader for OpenCV.js (WASM).
- * The first call returns a promise that resolves once the runtime is ready.
- * Subsequent calls return the cached promise.
+ * Loads /opencv.js as a <script> tag so the Emscripten runtime initialises
+ * correctly — bundling it via Vite/Rollup breaks onRuntimeInitialized.
  */
-import cv from '@techstark/opencv-js';
 
-type CvModule = typeof cv;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CvModule = any;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var cv: CvModule;
+}
 
 let readyPromise: Promise<CvModule> | null = null;
 
@@ -14,40 +19,55 @@ export function loadCv(): Promise<CvModule> {
 
   readyPromise = new Promise<CvModule>((resolve, reject) => {
     const start = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cvAny = cv as any;
 
-    // The only reliable proof that WASM is fully loaded is being able to
-    // actually instantiate a Mat. cv.Mat exists as a JS stub before WASM
-    // loads, but the constructor throws until WASM is ready.
-    const isWasmReady = (): boolean => {
+    // If a previous script tag already loaded OpenCV, cv global should exist
+    if (typeof window.cv !== 'undefined' && window.cv.Mat) {
       try {
-        const m = new cvAny.Mat(1, 1, 0);
+        const m = new window.cv.Mat(1, 1, 0);
         m.delete();
-        return true;
+        console.log('[OpenCV] already ready');
+        resolve(window.cv);
+        return;
       } catch {
-        return false;
+        // cv.Mat exists but WASM not ready yet — fall through to wait
       }
-    };
-
-    // Already ready (race-condition: WASM finished before this call)
-    if (isWasmReady()) {
-      console.log(`[OpenCV] WASM already ready at import time`);
-      resolve(cv);
-      return;
     }
 
-    // Hook up the runtime-init callback (chain with any existing one)
-    const prev = cvAny.onRuntimeInitialized;
-    cvAny.onRuntimeInitialized = () => {
-      if (typeof prev === 'function') { try { prev(); } catch { /* ignore */ } }
-      console.log(`[OpenCV] onRuntimeInitialized fired in ${Date.now() - start}ms`);
-      resolve(cv);
+    // Inject <script src="/opencv.js"> which puts `cv` on window and calls
+    // window.cv.onRuntimeInitialized when the WASM heap is ready.
+    const inject = () => {
+      // Set the callback BEFORE the script loads to avoid race
+      window.cv = window.cv || {};
+      const prev = window.cv.onRuntimeInitialized;
+      window.cv.onRuntimeInitialized = () => {
+        if (typeof prev === 'function') { try { prev(); } catch { /* ignore */ } }
+        console.log(`[OpenCV] ready in ${Date.now() - start}ms`);
+        resolve(window.cv);
+      };
+
+      const script = document.createElement('script');
+      script.src = '/opencv.js';
+      script.async = true;
+      script.onerror = () => reject(new Error('Failed to load /opencv.js'));
+      document.head.appendChild(script);
     };
 
-    // Safety timeout
+    // If the script is already in the DOM (e.g. HMR reload) just wait for ready
+    const existing = document.querySelector('script[src="/opencv.js"]');
+    if (existing) {
+      const prev = (window.cv || {}).onRuntimeInitialized;
+      window.cv = window.cv || {};
+      window.cv.onRuntimeInitialized = () => {
+        if (typeof prev === 'function') { try { prev(); } catch { /* ignore */ } }
+        console.log(`[OpenCV] ready (existing script) in ${Date.now() - start}ms`);
+        resolve(window.cv);
+      };
+    } else {
+      inject();
+    }
+
     setTimeout(() => {
-      reject(new Error('OpenCV.js failed to initialize within 30 s — check the browser console for WASM errors'));
+      reject(new Error('OpenCV.js did not initialize within 30 s'));
     }, 30000);
   });
 

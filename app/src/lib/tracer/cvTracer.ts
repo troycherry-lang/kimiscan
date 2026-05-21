@@ -21,7 +21,7 @@ import type { Point, VectorPath, PathNode, DetectedHole } from '@/types';
 import { generateId } from '@/lib/utils';
 import { pxToMm } from '@/lib/geometry/transform';
 import { dist } from '@/lib/geometry/distance';
-import { loadCv, type CvModule } from './cvLoader';
+import { loadCv } from './cvLoader';
 
 export interface CvTraceOptions {
   targetNodes: number;   // desired node count per outer contour (10..60, default 20)
@@ -302,7 +302,8 @@ function smoothPolygon(pts: Point[], kernelSize: number, passes: number): Point[
   return cur;
 }
 
-function pointsToMat(cv: CvModule, pts: Point[]): any {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pointsToMat(cv: any, pts: Point[]): any {
   const data = new Int32Array(pts.length * 2);
   for (let i = 0; i < pts.length; i++) {
     data[i * 2] = Math.round(pts[i].x);
@@ -311,7 +312,8 @@ function pointsToMat(cv: CvModule, pts: Point[]): any {
   return cv.matFromArray(pts.length, 1, cv.CV_32SC2, Array.from(data));
 }
 
-function binarySearchSimplify(cv: CvModule, pts: Point[], targetNodes: number): Point[] {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function binarySearchSimplify(cv: any, pts: Point[], targetNodes: number): Point[] {
   if (pts.length <= targetNodes) return pts;
 
   const matIn = pointsToMat(cv, pts);

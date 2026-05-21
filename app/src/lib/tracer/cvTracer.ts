@@ -38,7 +38,10 @@ export async function traceImageCv(
   imageData: ImageData,
   options: CvTraceOptions
 ): Promise<CvTraceResult> {
+  console.log(`[trace] start: ${imageData.width}x${imageData.height}, target=${options.targetNodes} nodes, smoothing=${options.smoothingPasses}`);
+  const t0 = performance.now();
   const cv = await loadCv();
+  console.log(`[trace] cv loaded (+${(performance.now() - t0).toFixed(0)}ms)`);
 
   const paths: VectorPath[] = [];
   const detectedHoles: DetectedHole[] = [];
@@ -65,6 +68,7 @@ export async function traceImageCv(
 
     const otsu = own(new cv.Mat());
     cv.threshold(blurred, otsu, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+    console.log(`[trace] otsu done (+${(performance.now() - t0).toFixed(0)}ms)`);
     await yieldToUi();
 
     // ── 3. Close to fill text & marks INSIDE pieces ──
@@ -76,6 +80,7 @@ export async function traceImageCv(
     // ── 4. Open to kill speckles ──
     const k9 = own(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9)));
     cv.morphologyEx(filled, filled, cv.MORPH_OPEN, k9);
+    console.log(`[trace] morphology done (+${(performance.now() - t0).toFixed(0)}ms)`);
     await yieldToUi();
 
     // ── 5. Flood-fill from each corner to erase scanner-background blobs ──
@@ -111,6 +116,7 @@ export async function traceImageCv(
       pieces.push({ mask, area, label: i });
     }
     pieces.sort((a, b) => b.area - a.area);
+    console.log(`[trace] found ${pieces.length} pieces (+${(performance.now() - t0).toFixed(0)}ms)`);
 
     // ── 7. For each piece: outer contour + simplified path + hole detection ──
     for (let pIdx = 0; pIdx < pieces.length; pIdx++) {
@@ -249,6 +255,7 @@ export async function traceImageCv(
     }
   }
 
+  console.log(`[trace] DONE: ${paths.length} paths, ${detectedHoles.length} holes (+${(performance.now() - t0).toFixed(0)}ms)`);
   return { paths, detectedHoles };
 }
 

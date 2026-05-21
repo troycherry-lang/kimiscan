@@ -12,16 +12,35 @@ let readyPromise: Promise<CvModule> | null = null;
 export function loadCv(): Promise<CvModule> {
   if (readyPromise) return readyPromise;
 
-  readyPromise = new Promise<CvModule>((resolve) => {
-    // If already initialized (Mat constructor available)
+  readyPromise = new Promise<CvModule>((resolve, reject) => {
+    const start = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((cv as any).Mat) {
+    const cvAny = cv as any;
+
+    // Hook up the runtime-init callback (chain with any existing one)
+    const prev = cvAny.onRuntimeInitialized;
+    cvAny.onRuntimeInitialized = () => {
+      if (typeof prev === 'function') { try { prev(); } catch { /* ignore */ } }
+      console.log(`[OpenCV] runtime initialized in ${Date.now() - start}ms`);
       resolve(cv);
-      return;
-    }
-    // Otherwise wait for the runtime callback the WASM module fires
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (cv as any).onRuntimeInitialized = () => resolve(cv);
+    };
+
+    // Polling fallback to handle the race where init completed between
+    // import time and us attaching the callback. Some builds also resolve
+    // via a promise on cv.ready.
+    const tick = () => {
+      if (cvAny.Mat) {
+        console.log(`[OpenCV] runtime ready (poll) in ${Date.now() - start}ms`);
+        resolve(cv);
+        return;
+      }
+      if (Date.now() - start > 30000) {
+        reject(new Error('OpenCV.js failed to initialize within 30 s'));
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    tick();
   });
 
   return readyPromise;

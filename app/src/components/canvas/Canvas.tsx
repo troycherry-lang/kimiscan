@@ -107,6 +107,24 @@ export default function Canvas() {
     img.src = image.dataUrl;
   }, [image, showImage, zoom, panOffset, getImageRect]);
 
+  // Wheel event registered manually as non-passive so preventDefault works
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (activeTool === 'eraser') {
+        const delta = e.deltaY > 0 ? -5 : 5;
+        setEraserRadius((r) => clamp(r + delta, 5, 120));
+        return;
+      }
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom(clamp(useAppStore.getState().zoom * delta, 10, 2000));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [activeTool, setZoom]);
+
   // Keyboard shortcuts for eraser
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -118,18 +136,6 @@ export default function Canvas() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Mouse wheel: resize brush when eraser active, else zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    if (activeTool === 'eraser') {
-      const delta = e.deltaY > 0 ? -5 : 5;
-      setEraserRadius((r) => clamp(r + delta, 5, 120));
-      return;
-    }
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = clamp(zoom * delta, 10, 2000);
-    setZoom(newZoom);
-  }, [activeTool, zoom, setZoom]);
 
   // Mouse handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -368,7 +374,6 @@ export default function Canvas() {
       className="absolute inset-0 overflow-hidden"
       style={{ background: 'var(--bg-canvas)', cursor: activeTool === 'eraser' ? 'none' : activeTool === 'hand' || dragRef.current.isPanning ? 'grab' : 'default' }}
       onMouseLeave={() => { setEraserPos(null); setEraserHits([]); eraserActiveRef.current = false; eraserPendingRef.current = new Map(); }}
-      onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

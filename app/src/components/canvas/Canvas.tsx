@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import useAppStore from '@/store/useAppStore';
 import { clamp } from '@/lib/utils';
 import { dist } from '@/lib/geometry/distance';
@@ -41,7 +41,15 @@ export default function Canvas() {
   const setSelectedNode = useAppStore((s) => s.setSelectedNode);
   const moveNode = useAppStore((s) => s.moveNode);
   const addNode = useAppStore((s) => s.addNode);
+  const eraseNodes = useAppStore((s) => s.eraseNodes);
   const setGlueLineState = useAppStore((s) => s.setGlueLineState);
+
+  // Eraser state
+  const [eraserRadius, setEraserRadius] = useState(20);
+  const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null);
+  const [eraserHits, setEraserHits] = useState<{ pathId: string; nodeIdx: number }[]>([]);
+  const eraserActiveRef = useRef(false);
+  const eraserPendingRef = useRef<Map<string, Set<number>>>(new Map());
 
   // Drag state
   const dragRef = useRef<{
@@ -99,13 +107,29 @@ export default function Canvas() {
     img.src = image.dataUrl;
   }, [image, showImage, zoom, panOffset, getImageRect]);
 
-  // Mouse wheel zoom
+  // Keyboard shortcuts for eraser
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === '[') setEraserRadius((r) => Math.max(5, r - 5));
+      if (e.key === ']') setEraserRadius((r) => Math.min(120, r + 5));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Mouse wheel: resize brush when eraser active, else zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    if (activeTool === 'eraser') {
+      const delta = e.deltaY > 0 ? -5 : 5;
+      setEraserRadius((r) => clamp(r + delta, 5, 120));
+      return;
+    }
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = clamp(zoom * delta, 10, 2000);
     setZoom(newZoom);
-  }, [zoom, setZoom]);
+  }, [activeTool, zoom, setZoom]);
 
   // Mouse handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -131,6 +155,13 @@ export default function Canvas() {
 
     const imgPos = screenToImage(mx, my);
     if (!imgPos) return;
+
+    // Eraser tool
+    if (activeTool === 'eraser') {
+      eraserActiveRef.current = true;
+      eraserPendingRef.current = new Map();
+      return;
+    }
 
     // Hand tool = pan
     if (activeTool === 'hand') {
@@ -222,6 +253,31 @@ export default function Canvas() {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
+    // Eraser: always update brush position + collect hits
+    if (activeTool === 'eraser') {
+      setEraserPos({ x: mx, y: my });
+      const imgRect = getImageRect();
+      const newHits: { pathId: string; nodeIdx: number }[] = [];
+      for (const path of paths) {
+        for (let i = 0; i < path.nodes.length; i++) {
+          const n = path.nodes[i];
+          const nsx = imgRect.x + n.x * imgRect.scale;
+          const nsy = imgRect.y + n.y * imgRect.scale;
+          const d = Math.sqrt((mx - nsx) ** 2 + (my - nsy) ** 2);
+          if (d <= eraserRadius) {
+            newHits.push({ pathId: path.id, nodeIdx: i });
+            if (eraserActiveRef.current) {
+              const pending = eraserPendingRef.current;
+              if (!pending.has(path.id)) pending.set(path.id, new Set());
+              pending.get(path.id)!.add(i);
+            }
+          }
+        }
+      }
+      setEraserHits(newHits);
+      return;
+    }
+
     if (dragRef.current.isDragging) {
       if (dragRef.current.isPanning) {
         const dx = mx - dragRef.current.startX;
@@ -238,16 +294,31 @@ export default function Canvas() {
         }
       }
     }
-  }, [screenToImage, setPanOffset, moveNode]);
+  }, [activeTool, eraserRadius, paths, getImageRect, screenToImage, setPanOffset, moveNode]);
 
   const handleMouseUp = useCallback(() => {
+    // Commit eraser stroke
+    if (eraserActiveRef.current) {
+      eraserActiveRef.current = false;
+      const pending = eraserPendingRef.current;
+      pending.forEach((removedSet, pathId) => {
+        const path = paths.find((p) => p.id === pathId);
+        if (!path) return;
+        const newNodes = rebridgePath(path.nodes, removedSet);
+        if (newNodes.length >= 3) eraseNodes(pathId, newNodes);
+      });
+      eraserPendingRef.current = new Map();
+      setEraserHits([]);
+      return;
+    }
+
     dragRef.current = {
       isDragging: false, isPanning: false,
       startX: 0, startY: 0,
       startPan: { x: 0, y: 0 },
       draggedNode: null,
     };
-  }, []);
+  }, [paths, eraseNodes]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (!containerRef.current || !selectedPathId) return;
@@ -295,12 +366,12 @@ export default function Canvas() {
     <div
       ref={containerRef}
       className="absolute inset-0 overflow-hidden"
-      style={{ background: 'var(--bg-canvas)', cursor: activeTool === 'hand' || dragRef.current.isPanning ? 'grab' : 'default' }}
+      style={{ background: 'var(--bg-canvas)', cursor: activeTool === 'eraser' ? 'none' : activeTool === 'hand' || dragRef.current.isPanning ? 'grab' : 'default' }}
+      onMouseLeave={() => { setEraserPos(null); setEraserHits([]); eraserActiveRef.current = false; eraserPendingRef.current = new Map(); }}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
       onDoubleClick={handleDoubleClick}
     >
       {/* Grid overlay */}
@@ -429,6 +500,30 @@ export default function Canvas() {
           </>
         )}
 
+        {/* Eraser: hit highlights */}
+        {activeTool === 'eraser' && eraserHits.map(({ pathId, nodeIdx }) => {
+          const path = paths.find((p) => p.id === pathId);
+          if (!path) return null;
+          const pos = nodeToScreen(path.nodes[nodeIdx]);
+          return (
+            <circle
+              key={`erase-${pathId}-${nodeIdx}`}
+              cx={pos.x} cy={pos.y} r={6}
+              fill="rgba(239,68,68,0.75)" stroke="#ef4444" strokeWidth={1}
+            />
+          );
+        })}
+
+        {/* Eraser: brush circle cursor */}
+        {activeTool === 'eraser' && eraserPos && (
+          <circle
+            cx={eraserPos.x} cy={eraserPos.y} r={eraserRadius}
+            fill="rgba(239,68,68,0.06)"
+            stroke="#ef4444" strokeWidth={1.5}
+            strokeDasharray="4,3"
+          />
+        )}
+
         {/* Text labels */}
         {textLabels.map((label) => {
           const pos = nodeToScreen({ x: label.x, y: label.y });
@@ -535,6 +630,38 @@ function GlueLinePreview({
       strokeLinecap="round"
     />
   );
+}
+
+// ── Eraser helpers ──
+
+function rebridgePath(nodes: PathNode[], removedIndices: Set<number>): PathNode[] {
+  const n = nodes.length;
+  const kept: PathNode[] = nodes.filter((_, i) => !removedIndices.has(i)).map((node) => ({ ...node }));
+  const keptOrigIdx = nodes.map((_, i) => i).filter((i) => !removedIndices.has(i));
+
+  if (kept.length < 3) return nodes;
+
+  const kn = kept.length;
+  for (let ki = 0; ki < kn; ki++) {
+    const origA = keptOrigIdx[ki];
+    const origB = keptOrigIdx[(ki + 1) % kn];
+    const directlyFollows = (origA + 1) % n === origB;
+    if (!directlyFollows) {
+      const A = kept[ki];
+      const B = kept[(ki + 1) % kn];
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) {
+        const nx = dx / len;
+        const ny = dy / len;
+        const hLen = len / 3;
+        A.handleOut = { x: nx * hLen, y: ny * hLen };
+        B.handleIn = { x: -nx * hLen, y: -ny * hLen };
+      }
+    }
+  }
+  return kept;
 }
 
 function pointToSegmentDist(p: Point, a: Point, b: Point): number {

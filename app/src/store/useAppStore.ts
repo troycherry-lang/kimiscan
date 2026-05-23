@@ -53,6 +53,7 @@ interface AppActions {
   moveNode: (pathId: string, nodeIndex: number, x: number, y: number) => void;
   addNode: (pathId: string, segmentIndex: number, t: number) => void;
   deleteNode: (pathId: string, nodeIndex: number) => void;
+  eraseNodes: (pathId: string, newNodes: VectorPath['nodes']) => void;
 
   // Holes
   setDetectedHoles: (holes: DetectedHole[]) => void;
@@ -282,6 +283,20 @@ const useAppStore = create<AppState & AppActions>((set, get) => ({
       }),
       selectedNodeIndex: null,
     })),
+
+  eraseNodes: (pathId, newNodes) => {
+    const state = get();
+    const prevPaths = state.paths;
+    const updatedPaths = state.paths.map((p) =>
+      p.id === pathId ? { ...p, nodes: newNodes } : p
+    );
+    state.pushAction({
+      type: 'erase',
+      undo: () => set({ paths: prevPaths }),
+      redo: () => set({ paths: updatedPaths }),
+    });
+    set({ paths: updatedPaths });
+  },
 
   // ── Holes ──
   setDetectedHoles: (holes) => set({ detectedHoles: holes }),

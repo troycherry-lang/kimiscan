@@ -1,14 +1,15 @@
 import useAppStore from '@/store/useAppStore';
 import {
   FolderOpen, Save, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2,
-  Hand, MousePointer2, PenTool, Minus, Play, Image, Grid3x3, Ruler,
+  Hand, MousePointer2, PenTool, Minus, Play, Image, Grid3x3, Ruler, Eraser,
 } from 'lucide-react';
 
 const tools = [
-  { id: 'hand' as const, icon: Hand, label: 'Pan' },
-  { id: 'select' as const, icon: MousePointer2, label: 'Select' },
-  { id: 'node' as const, icon: PenTool, label: 'Node' },
-  { id: 'glue' as const, icon: Minus, label: 'Glue' },
+  { id: 'hand' as const, icon: Hand, label: 'Pan', key: 'H' },
+  { id: 'select' as const, icon: MousePointer2, label: 'Select', key: 'V' },
+  { id: 'node' as const, icon: PenTool, label: 'Node', key: 'A' },
+  { id: 'glue' as const, icon: Minus, label: 'Glue', key: 'G' },
+  { id: 'eraser' as const, icon: Eraser, label: 'Eraser', key: 'E' },
 ];
 
 export default function Toolbar() {
@@ -53,7 +54,7 @@ export default function Toolbar() {
             color: activeTool === t.id ? '#fff' : 'var(--text-secondary)',
           }}
           onClick={() => setTool(t.id)}
-          title={`${t.label} (${t.id === 'hand' ? 'H' : t.id === 'select' ? 'V' : t.id === 'node' ? 'A' : 'G'})`}
+          title={`${t.label} (${t.key})`}
         >
           <t.icon size={15} />
           <span>{t.label}</span>

@@ -121,7 +121,7 @@ export interface TraceSettings {
 
 // ── App State ──
 
-export type Tool = 'select' | 'hand' | 'node' | 'glue';
+export type Tool = 'select' | 'hand' | 'node' | 'glue' | 'eraser';
 
 export interface ExportOptions {
   includeCut: boolean;
